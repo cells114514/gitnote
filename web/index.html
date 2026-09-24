@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f0">
+  <title>gitnote · GitHub 项目发现</title>
+  <script>try { const saved = localStorage.getItem('gitnote-theme') || localStorage.getItem('giterest-theme'); document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (_) { document.documentElement.dataset.theme = 'light'; } if (document.documentElement.dataset.theme === 'dark') document.querySelector('meta[name="theme-color"]').content = '#1e1e1e';</script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/vendor/purify.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="gitnote 首页"><span class="brand-mark">✳</span><span>gitnote<small>GITHUB DISCOVERY</small></span></a>
+      <div class="top-search"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索 GitHub 公开仓库..." aria-label="搜索 GitHub 公开仓库"><button id="remoteSearch" type="button" title="搜索 GitHub 公开仓库">搜索 GitHub</button></div>
+      <div class="top-actions"><button class="theme-button" id="themeButton" type="button" aria-label="切换明暗模式" aria-pressed="false">☾ <span>深色</span></button><button class="auth-button" id="authButton" type="button">连接 GitHub</button><button class="help-button" id="aboutButton" type="button" aria-label="关于 gitnote">?</button></div>
+    </header>
+
+    <main id="feed" class="discovery-layout">
+      <aside class="sidebar" aria-label="发现筛选">
+        <div class="side-title">探索空间 <span>EXPLORE</span></div>
+        <nav class="main-nav" aria-label="排序与收藏">
+          <button class="nav-item active" data-mode="recommended" type="button"><span class="nav-icon">✦</span> 为你推荐 <span class="nav-arrow">↗</span></button>
+          <button class="nav-item" data-mode="search" id="searchNav" type="button" hidden><span class="nav-icon">⌕</span> 搜索结果 <span class="nav-arrow">↗</span></button>
+          <button class="nav-item" data-mode="latest" type="button"><span class="nav-icon">◷</span> 最近更新 <span class="nav-arrow">↗</span></button>
+          <button class="nav-item" data-mode="stars" type="button"><span class="nav-icon">☆</span> Stars 总榜 <span class="nav-arrow">↗</span></button>
+          <button class="nav-item" data-mode="trending" type="button"><span class="nav-icon">↗</span> 近期 Trending <span class="nav-arrow">↗</span></button>
+          <button class="nav-item" data-mode="saved" type="button"><span class="nav-icon">▣</span> 我的收藏 <span class="nav-arrow">↗</span></button>
+        </nav>
+        <div class="side-divider"></div>
+        <div class="filter-header">筛选发现 <button id="clearFilters" type="button">清除</button></div>
+        <label class="filter-label" for="topicFilter">话题分类</label><select id="topicFilter"><option value="">全部话题</option></select>
+        <label class="filter-label" for="languageFilter">编程语言</label><select id="languageFilter"><option value="">全部语言</option></select>
+        <label class="filter-label" for="starBandFilter" id="starBandLabel">Stars 范围</label><select id="starBandFilter"><option value="">全部范围</option></select>
+        <div class="sidebar-note"><span>✧</span><b>只跟随你的好奇心</b><p>偏好保存在当前浏览器。登录仅用于提高 GitHub 搜索额度，可主动导入 Star 作为兴趣起点。</p><button id="importStars" type="button" hidden>导入我 Star 过的仓库 →</button><button id="resetPreferences" type="button">重置本地偏好 →</button></div>
+      </aside>
+
+      <section class="feed-main" aria-labelledby="feedTitle">
+        <div class="feed-heading"><div><div class="section-kicker">CURATED FOR CURIOSITY</div><h2 id="feedTitle">为你推荐 <span class="title-spark">✳</span></h2><p id="feedSubtitle">探索真实的 GitHub 仓库。</p></div><div class="feed-tools"><div class="feed-count"><strong id="resultCount">—</strong><span id="countLabel">个 GitHub 项目</span></div><button id="discoverButton" type="button">换一批 ↗</button></div></div>
+        <div id="rateStatus" class="rate-status" aria-live="polite">GitHub 搜索额度将在首次请求后显示。</div>
+        <div class="listing-options"><label id="periodWrap" hidden>榜单周期 <select id="periodFilter"><option value="daily">今天</option><option value="weekly">本周</option><option value="monthly">本月</option></select></label><label id="sortWrap" hidden>搜索排序 <select id="searchSort"><option value="best">最佳匹配</option><option value="stars">Stars</option><option value="updated">最近更新</option></select></label><a id="trendingSource" href="https://github.com/trending" target="_blank" rel="noopener noreferrer" hidden>在 GitHub 查看原榜 ↗</a></div>
+        <div class="active-filters" id="activeFilters" aria-live="polite"></div>
+        <div id="feedGrid" class="masonry" aria-live="polite"></div>
+        <div id="emptyState" class="empty-state" hidden><div class="empty-symbol">◌</div><h3>暂时没有匹配的卡片</h3><p>可以调整筛选，或再换一批。</p><button id="emptyClear" type="button">继续探索</button></div>
+        <div class="feed-footer" id="feedFooter">✳ &nbsp; 打开页面会自动发现公开仓库</div><button id="loadMore" class="load-more" type="button" hidden>加载更多</button>
+      </section>
+    </main>
+    <footer class="site-footer"><span class="brand-mini">✳ gitnote</span><span>由 Python 驱动的 GitHub 项目发现</span><span>仓库数据来自 GitHub</span></footer>
+  </div>
+
+  <dialog id="aboutDialog" class="about-dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭" type="submit">×</button></form><div class="dialog-kicker">ABOUT GITNOTE</div><h2>发现值得一看的<br>GitHub 项目。</h2><p>打开页面会自动发现一批项目；“换一批”从不同话题、Stars 区间和排序生成 GitHub 搜索条件，每次最多抽样三轮，再按本地兴趣画像排序。搜索、Stars 总榜和 Trending 使用各自的远程数据源。推荐逻辑参考 GitTok.dev 当前公开实现，具体来源和许可见 README。</p><div class="dialog-points"><div><span>01</span><b>推荐与探索</b><p>话题和语言偏好影响搜索与排序，也会保留探索机会。</p></div><div><span>02</span><b>登录与额度</b><p>OAuth 凭据仅留在本机 Python 进程，登录后由后端发送认证搜索请求。断开后如需撤销 GitHub 端授权，可在 <a href="https://github.com/settings/applications" target="_blank" rel="noopener noreferrer">GitHub Applications</a> 操作。</p></div><div><span>03</span><b>数据留在本地</b><p>画像存在浏览器 localStorage，可随时重置。不会上传停留时长到第三方。</p></div></div><form method="dialog"><button class="dialog-done" type="submit">继续探索 ↗</button></form></dialog>
+  <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle"><button id="detailClose" class="dialog-close" type="button" aria-label="关闭详情">×</button><div id="detailContent"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.github_cache.sqlite3
+.github_cache.sqlite3-*
+.env
+.env.local
+/development_docs/

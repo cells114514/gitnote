@@ -40,15 +40,18 @@ class GitHubClient:
         self.lock = threading.Lock()
         self.search_times = {"anonymous": deque(), "authenticated": deque()}
         self.backoff_until = 0
+        self.bucket_backoff_until = {}
         self.rate = {}
+        self.rate_by_group = {}
 
     def _budget(self, authenticated):
         group = "authenticated" if authenticated else "anonymous"
         limit = 20 if authenticated else 6
         now = time.time()
         with self.lock:
-            if now < self.backoff_until:
-                raise GitHubError("GitHub 搜索暂时受限", 429, self.backoff_until)
+            retry_at = max(self.backoff_until, self.bucket_backoff_until.get(("search", group), 0))
+            if now < retry_at:
+                raise GitHubError("GitHub 搜索暂时受限", 429, retry_at)
             values = self.search_times[group]
             while values and values[0] <= now - 60:
                 values.popleft()
@@ -56,16 +59,19 @@ class GitHubClient:
                 raise GitHubError("本地搜索预算已用完", 429, values[0] + 60)
             values.append(now)
 
-    def _record_headers(self, headers):
+    def _record_headers(self, headers, authenticated):
         h = {str(k).lower(): v for k, v in headers.items()}
         resource = h.get("x-ratelimit-resource") or "core"
         with self.lock:
-            self.rate[resource] = {
+            snapshot = {
                 "limit": _int(h.get("x-ratelimit-limit")),
                 "remaining": _int(h.get("x-ratelimit-remaining")),
                 "reset": _int(h.get("x-ratelimit-reset")),
                 "resource": resource,
             }
+            self.rate[resource] = snapshot
+            group = "authenticated" if authenticated else "anonymous"
+            self.rate_by_group[(resource, group)] = snapshot
         return h
 
     def get_json(self, path, params=None, token=None, search=False, cache_ttl=0,
@@ -81,7 +87,8 @@ class GitHubClient:
             self._budget(bool(token))
         else:
             with self.lock:
-                retry_at = self.backoff_until
+                group = "authenticated" if token else "anonymous"
+                retry_at = max(self.backoff_until, self.bucket_backoff_until.get(("core", group), 0))
             if time.time() < retry_at:
                 raise GitHubError("GitHub 请求暂时受限", 429, retry_at)
         headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28",
@@ -89,7 +96,7 @@ class GitHubClient:
         if token:
             headers["Authorization"] = "Bearer " + token
         status, body, response_headers = self.transport(url, headers)
-        h = self._record_headers(response_headers)
+        h = self._record_headers(response_headers, bool(token))
         if status in (403, 429):
             retry = _int(h.get("retry-after"))
             remaining = _int(h.get("x-ratelimit-remaining"))
@@ -97,7 +104,12 @@ class GitHubClient:
             now = time.time()
             wait_until = now + retry if retry is not None else (reset if remaining == 0 and reset else now + 60)
             with self.lock:
-                self.backoff_until = max(self.backoff_until, wait_until)
+                if remaining == 0:
+                    group = "authenticated" if token else "anonymous"
+                    bucket = (h.get("x-ratelimit-resource") or ("search" if search else "core"), group)
+                    self.bucket_backoff_until[bucket] = max(self.bucket_backoff_until.get(bucket, 0), wait_until)
+                else:
+                    self.backoff_until = max(self.backoff_until, wait_until)
             raise GitHubError("GitHub 请求受限，请稍后重试", status, wait_until)
         if status == 401:
             raise GitHubError("GitHub 登录已失效，请重新连接", status)
@@ -140,9 +152,18 @@ class GitHubClient:
         self.cache.put(key, data, cache_ttl)
         return data
 
-    def rate_snapshot(self):
+    def rate_snapshot(self, authenticated=None):
         with self.lock:
-            return {"resources": dict(self.rate), "retry_at": self.backoff_until or None}
+            if authenticated is None:
+                resources = dict(self.rate)
+                waits = self.bucket_backoff_until.values()
+            else:
+                group = "authenticated" if authenticated else "anonymous"
+                resources = {resource: value for (resource, kind), value in self.rate_by_group.items()
+                             if kind == group}
+                waits = [wait for (_, kind), wait in self.bucket_backoff_until.items() if kind == group]
+            retry_at = max([self.backoff_until, *waits])
+            return {"resources": resources, "retry_at": retry_at or None}
 
 
 def _int(value):

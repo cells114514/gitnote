@@ -20,7 +20,13 @@ macOS 或 Linux 如使用 `python3` 命令，运行 `python3 app.py`。
 
 ## GitHub 登录
 
-登录用于让 **Python 后端**以用户授权的 token 调用 GitHub Search，提高实际的 Search 请求限额。需要自行注册 GitHub OAuth App，将回调地址设为 `http://127.0.0.1:8765/auth/callback`。若改用其他端口，回调地址也要相应修改。
+登录用于让 **Python 后端**以你的 GitHub 身份调用公开仓库搜索。按 [GitHub 官方步骤](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)打开 GitHub → Settings → Developer settings → **OAuth apps** → **New OAuth App**，注册一个自己使用的 OAuth App。当前注册页面在 **Redirect URIs** 区域提供 **Redirect URI** 输入框；GitHub 文档也将这个授权后回跳地址称为 Authorization callback URL。各项填写如下：
+
+- Application name：例如 `gitnote local`。
+- Homepage URL：`http://127.0.0.1:8765/`。
+- Redirect URI：`http://127.0.0.1:8765/auth/callback`。
+
+**Allow wildcard matching** 和 **Enable Device Flow** 不需要开启；可保留默认启用的 **Expire user access tokens**，程序支持自动续期。注册后在应用设置页取得 Client ID，并生成 Client Secret。此程序使用 `127.0.0.1` 回环地址；按 [GitHub 的回环重定向规则](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#loopback-redirect-urls)，`python app.py --port 其他端口` 时 GitHub 允许授权请求携带实际监听端口，因此通常无需修改注册的回调地址。页面仍应从 `http://127.0.0.1:端口/` 打开。
 
 启动 Python 前设置本机环境变量（不要把值写进代码或提交到仓库）：
 
@@ -38,7 +44,9 @@ export GH_CLIENT_SECRET="你的 OAuth App Client Secret"
 python3 app.py
 ```
 
-页面点“连接 GitHub”后走 OAuth 授权码、`state` 与 PKCE S256。token 仅放在 Python 进程内存，浏览器只保存随机、HttpOnly 的会话 cookie；重启服务后需重新登录。页面显示 GitHub 响应的 Search 额度；本地还采用认证 20 次/分钟、匿名 6 次/分钟的保守预算。点击“断开”会清除内存会话。如需撤销 GitHub 端已授予的授权，可在 GitHub 设置的 Applications 中撤销该 OAuth App。
+打开页面并点“连接 GitHub”，在 GitHub 授权页确认后即可使用认证搜索。程序使用 OAuth 授权码、`state` 与 PKCE S256，不主动申请仓库或账户写入权限。access token 和可能返回的 refresh token 仅放在 Python 进程内存，浏览器只保存随机、HttpOnly 的会话 cookie；短期令牌会在到期前自动续期，重启服务后需重新登录。点击“断开”会清除内存会话；如需撤销 GitHub 端授权，可在 GitHub 设置的 Applications 中撤销该 OAuth App。
+
+[GitHub Search 官方限额](https://docs.github.com/en/rest/search/search#rate-limit)对公开仓库搜索为匿名 10 次/分钟、认证 30 次/分钟；本项目另设保守的本地预算，分别为 6 次/分钟和 20 次/分钟。因此登录后本项目的实际搜索预算由每分钟 6 次提高到 20 次。普通 REST API 的主限额则从匿名每 IP 60 次/小时提高到认证用户通常 5,000 次/小时，搜索仍受独立限额约束。页面显示 GitHub 最近一次 Search 响应给出的额度；重复查询命中公开缓存时不会消耗新请求，也不会刷新显示值。
 
 登录后可主动点击“导入我 Star 过的仓库”，最多读取前 200 个 Star 仓库的 topics 和语言，用于建立本地兴趣画像。导入不会在服务器保存完整仓库列表。浏览器保存的是汇总画像，可随时重置。
 

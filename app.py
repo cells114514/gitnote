@@ -122,6 +122,9 @@ class GitnoteHandler(BaseHTTPRequestHandler):
     def token(self):
         return AUTH.token(self.session_id())
 
+    def rate_snapshot(self):
+        return CLIENT.rate_snapshot(AUTH.status(self.session_id())["connected"])
+
     def request_data(self):
         length = int(self.headers.get("Content-Length", "0"))
         if length < 0 or length > 1_000_000:
@@ -144,7 +147,7 @@ class GitnoteHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/status":
             return self.send_json(AUTH.status(self.session_id()))
         if path == "/api/rate":
-            return self.send_json(CLIENT.rate_snapshot())
+            return self.send_json(self.rate_snapshot())
         if path == "/auth/start":
             try:
                 session, url = AUTH.start(self.server.server_port)
@@ -184,7 +187,7 @@ class GitnoteHandler(BaseHTTPRequestHandler):
                                   seen=data.get("seen") if isinstance(data.get("seen"), list) else [],
                                   hidden=data.get("hidden") if isinstance(data.get("hidden"), list) else [],
                                   topic=topic, language=language, star_band=star_band, token=self.token())
-                result["rate"] = CLIENT.rate_snapshot()
+                result["rate"] = self.rate_snapshot()
                 return self.send_json(result)
             if path == "/api/search":
                 keyword = clean_text(data.get("query"), 100)
@@ -196,18 +199,18 @@ class GitnoteHandler(BaseHTTPRequestHandler):
                     raise ValueError("排序条件无效")
                 result = search_keyword(CLIENT, keyword, self.token(), clean_page(data.get("page", 1)),
                                         language, topic, band, sort)
-                return self.send_json({**result, "rate": CLIENT.rate_snapshot()})
+                return self.send_json({**result, "rate": self.rate_snapshot()})
             if path == "/api/stars-top":
                 language, _, _ = clean_search_filters(data)
                 result = stars_top(CLIENT, self.token(), clean_page(data.get("page", 1)), language)
-                return self.send_json({**result, "rate": CLIENT.rate_snapshot()})
+                return self.send_json({**result, "rate": self.rate_snapshot()})
             if path == "/api/trending":
                 language, _, _ = clean_search_filters(data)
                 period = clean_text(data.get("period"), 10) or "daily"
                 if period not in {"daily", "weekly", "monthly"}:
                     raise ValueError("Trending 周期无效")
                 result = trending_page(CLIENT.cache, period, language)
-                return self.send_json({**result, "rate": CLIENT.rate_snapshot()})
+                return self.send_json({**result, "rate": self.rate_snapshot()})
             if path == "/api/repo-detail":
                 return self.send_json(repo_detail(CLIENT, data.get("full_name"), self.token(),
                                                   include_readme=bool(data.get("readme"))))
@@ -247,7 +250,7 @@ class GitnoteHandler(BaseHTTPRequestHandler):
                 return self.send_json({"connected": False})
         except GitHubError as error:
             return self.send_json({"error": str(error), "retry_at": error.retry_at,
-                                   "rate": CLIENT.rate_snapshot()}, error.status if 400 <= error.status < 600 else 502)
+                                   "rate": self.rate_snapshot()}, error.status if 400 <= error.status < 600 else 502)
         except ValueError:
             return self.send_json({"error": "请求参数无效"}, 400)
         return self.send_json({"error": "未找到接口"}, 404)

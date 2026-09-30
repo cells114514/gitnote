@@ -127,6 +127,23 @@ class ClientAndAuthTests(unittest.TestCase):
         self.assertEqual(first.exception.status, 429)
         self.assertEqual(second.exception.status, 429)
 
+    def test_anonymous_search_limit_does_not_block_login_or_authenticated_search(self):
+        calls = []
+        def transport(url, headers):
+            calls.append((url, headers.get("Authorization")))
+            if url.endswith("q=anonymous"):
+                return 403, b"{}", {"X-RateLimit-Resource": "search",
+                                     "X-RateLimit-Remaining": "0", "Retry-After": "60"}
+            return 200, b'{}', {"X-RateLimit-Resource": "search"}
+        client = GitHubClient(MemoryCache(), transport)
+        with self.assertRaises(GitHubError):
+            client.search({"q": "anonymous"})
+        client.get_json("/user", token="user-token")
+        client.search({"q": "authenticated"}, token="user-token")
+        self.assertEqual(calls[-1][1], "Bearer user-token")
+        self.assertIsNone(client.rate_snapshot(authenticated=True)["retry_at"])
+        self.assertIsNotNone(client.rate_snapshot(authenticated=False)["retry_at"])
+
     def test_auth_start_keeps_secret_out_of_url_and_validates_state(self):
         client = GitHubClient(MemoryCache(), lambda *_: (200, b'{}', {}))
         auth = AuthManager(client, "public-client", "private-secret")
@@ -153,6 +170,41 @@ class ClientAndAuthTests(unittest.TestCase):
         with patch("github_auth.urlopen", return_value=io.BytesIO(b'{"access_token":"secret-token","scope":"repo"}')):
             with self.assertRaises(GitHubError):
                 auth.callback(session, auth.sessions[session]["state"], "another-code")
+
+    def test_expiring_oauth_token_refreshes_before_search(self):
+        seen = []
+        def transport(url, headers):
+            seen.append(headers["Authorization"])
+            return 200, b'{"login":"reader"}', {}
+        auth = AuthManager(GitHubClient(MemoryCache(), transport), "client", "secret")
+        session, _ = auth.start(8765)
+        state = auth.sessions[session]["state"]
+        responses = [
+            io.BytesIO(b'{"access_token":"first","refresh_token":"refresh-1","expires_in":28800,"scope":""}'),
+            io.BytesIO(b'{"access_token":"second","refresh_token":"refresh-2","expires_in":28800,"scope":""}'),
+        ]
+        with patch("github_auth.urlopen", side_effect=responses) as exchange:
+            auth.callback(session, state, "code")
+            auth.sessions[session]["expires_at"] = 0
+            auth.client.search({"q": "test"}, token=auth.token(session))
+            self.assertEqual(auth.token(session), "second")
+        self.assertEqual(seen, ["Bearer first", "Bearer second"])
+        self.assertEqual(exchange.call_count, 2)
+        self.assertIn(b"grant_type=refresh_token", exchange.call_args.args[0].data)
+        self.assertIn(b"refresh_token=refresh-1", exchange.call_args.args[0].data)
+        self.assertEqual(auth.sessions[session]["refresh_token"], "refresh-2")
+
+    def test_failed_refresh_requires_reconnection(self):
+        auth = AuthManager(GitHubClient(MemoryCache(), lambda *_: (200, b'{"login":"reader"}', {})),
+                           "client", "secret")
+        session, _ = auth.start(8765)
+        with patch("github_auth.urlopen", return_value=io.BytesIO(
+                b'{"access_token":"first","refresh_token":"refresh-1","expires_in":1,"scope":""}')):
+            auth.callback(session, auth.sessions[session]["state"], "code")
+        with patch("github_auth.urlopen", return_value=io.BytesIO(b'{"error":"bad_refresh_token"}')):
+            with self.assertRaises(GitHubError):
+                auth.token(session)
+        self.assertFalse(auth.status(session)["connected"])
 
 
 if __name__ == "__main__":
